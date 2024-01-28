@@ -1,5 +1,12 @@
 package main
 
+import (
+	"crypto/md5"
+	"encoding/binary"
+	"sort"
+	"unicode"
+)
+
 /*
 === Поиск анаграмм по словарю ===
 
@@ -19,6 +26,90 @@ package main
 Программа должна проходить все тесты. Код должен проходить проверки go vet и golint.
 */
 
-func main() {
+// Hash преобразует слово, поданное на вход, в некоторое число, которое зависит лишь от количества вхождений каждой из
+// букв русского алфавита в данное слово.
+func Hash(word string) uint16 {
+	counts := [32]byte{}
 
+	for _, r := range []rune(word) {
+		// Делаем нашу хэш-функцию независящей от регистра
+		r = unicode.ToLower(r)
+
+		// Считаем е и ё одной буквой, поскольку в unicode код ё находится вне диапазона а-я, создавая нам излишние
+		// проблемы. Заодно получим алфавит из красивого числа букв - 32.
+		if r == 'ё' {
+			r = 'е'
+		}
+
+		// Игнорируем всё, что находится вне диапазона а-я
+		if r < 'а' || r > 'я' {
+			continue
+		}
+
+		// Количество текущей буквы сохраняем в соответствующую ей ячейку массива
+		counts[r-'а'] += 1
+	}
+
+	// Чтобы вместо разреженного массива counts получить что-то более "красивое" и случайное, пропустим его содержимое
+	// через функцию md5.
+	h := md5.New()
+	h.Write(counts[:])
+
+	// Поскольку каждый байт, поданный на вход md5, влияет на каждый байт на выходе md5, то мы можем безболезненно
+	// отбросить любую часть хэша. Для такой простой задачи нам хватит и двух байт, которые обеспечат нам в лучшем
+	// случае 2^16 возможных групп анаграмм.
+	return binary.LittleEndian.Uint16(h.Sum(nil)[:2])
+}
+
+// WordContainer - обёртка над []string, реализующая sort.Interface.
+type WordContainer []string
+
+func (w WordContainer) Len() int {
+	return len(w)
+}
+
+func (w WordContainer) Less(i, j int) bool {
+	return w[i] < w[j]
+}
+
+func (w WordContainer) Swap(i, j int) {
+	w[i], w[j] = w[j], w[i]
+}
+
+// GroupAnagrams группирует слова из words
+func GroupAnagrams(words []string) *map[string][]string {
+	// Создадим две временные мапы:
+	// - хэш слова -> список слов (чтобы непосредственно группировать слова)
+	// - хэш слова -> первое слово, из которого получен данный хэш (чтобы в итоге восстановить слово по хэшу)
+	groups := make(map[uint16]WordContainer)
+	reverse := make(map[uint16]string)
+
+	for _, word := range words {
+		// Определяем, в какую группу попадёт слово
+		h := Hash(word)
+
+		// Создаём новую группу с нашим словом или добавляем его в одну из существующих
+		if _, ok := groups[h]; ok {
+			groups[h] = append(groups[h], word)
+		} else {
+			groups[h] = []string{word}
+			reverse[h] = word
+		}
+	}
+
+	// Объединяем две предыдущие мапы в одну
+	result := make(map[string][]string)
+
+	for h, key := range reverse {
+		// Убираем группы, где меньше двух слов
+		if groups[h].Len() < 2 {
+			continue
+		}
+
+		// Сортируем слова в каждой группе и добавляем группу в мапу
+		sort.Sort(groups[h])
+		result[key] = groups[h]
+	}
+
+	return &result
 }
