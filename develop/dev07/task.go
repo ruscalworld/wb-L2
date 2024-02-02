@@ -30,9 +30,25 @@ start := time.Now()
 	sig(1*time.Minute),
 )
 
-fmt.Printf(“fone after %v”, time.Since(start))
+fmt.Printf(“done after %v”, time.Since(start))
 */
 
-func main() {
+func or(channels ...<-chan interface{}) <-chan interface{} {
+	// Канал, куда будут приходить данные из channels
+	merged := make(chan interface{})
 
+	// Создадим отдельную горутину для каждого канала, которая будет ожидать данные из каждого канала и отправлять их в
+	// общий канал
+	for _, c := range channels {
+		go wait(c, merged)
+	}
+
+	return merged
+}
+
+// wait читает данные из канала c и перенаправляет их в канал m
+func wait(c <-chan interface{}, m chan<- interface{}) {
+	for v := range c {
+		m <- v
+	}
 }
